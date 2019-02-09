@@ -1,0 +1,6 @@
+{
+  "RESULT_TOPIC": "ocr-result-topic",
+  "RESULT_BUCKET": "ocr-output-bucket",
+  "TRANSLATE_TOPIC": "ocr-translate-topic",
+  "TO_LANG": ["nl","en","fr"]
+}
