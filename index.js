@@ -39,9 +39,9 @@ function publishResult(topicName, data) {
  * @returns {Promise}
  */
 function detectText(bucketName, filename) {
-  let text;
-
   console.log(`Scanning for text in image ${filename}`);
+  let text;
+  
   return vision
     .textDetection(`gs://${bucketName}/${filename}`)
     .then(([detections]) => {
@@ -50,18 +50,13 @@ function detectText(bucketName, filename) {
       console.log(`Extracted text from image (${text.length} chars)`);
       return translate.detect(text);
     })
-    .then(([detection]) => {
-      if (Array.isArray(detection)) {
-        detection = detection[0];
-      }
+    .then(([d]) => {
+      const detection = Array.isArray(d) ? d[0] : d;
       console.log(`Detected language "${detection.language}" for ${filename}`);
 
       // Submit a message to the bus for each language we're going to translate to
       const tasks = config.TO_LANG.map(lang => {
-        let topicName = config.TRANSLATE_TOPIC;
-        if (detection.language === lang) {
-          topicName = config.RESULT_TOPIC;
-        }
+        const topicName = config[detection.language === lang ? 'RESULT_TOPIC' : 'TRANSLATE_TOPIC'];
         const messageData = {
           text: text,
           filename: filename,
@@ -95,21 +90,18 @@ function renameImageForSave(filename, lang) {
  * @param {object} event (Node 8+) A Google Cloud Storage File object.
  */
 exports.processImage = event => {
-  let file = event.data || event;
+  const file = event.data || event;
 
-  return Promise.resolve()
-    .then(() => {
-      if (file.resourceState === 'not_exists') // This was a deletion event, we don't want to process this
-        return;
-      
-      if (!file.bucket)
-        throw new Error('Bucket not provided. Make sure you have a "bucket" property in your request');
-      
-      if (!file.name)
-        throw new Error('Filename not provided. Make sure you have a "name" property in your request');
+  if (file.resourceState === 'not_exists') {
+    console.log('File does not exist.');
+    return Promise.resolve();
+  }
+  if (!file.bucket)
+    return Promise.reject(new Error('Bucket not provided. Make sure you have a "bucket" property in your request'));
+  if (!file.name)
+    return Promise.reject(new Error('Filename not provided. Make sure you have a "name" property in your request'));
 
-      return detectText(file.bucket, file.name);
-    })
+  return detectText(file.bucket, file.name)
     .then(() => {
       console.log(`File ${file.name} processed.`);
     });
