@@ -38,36 +38,30 @@ function publishResult(topicName, data) {
  * @param {string} filename Cloud Storage file name.
  * @returns {Promise}
  */
-function detectText(bucketName, filename) {
+async function detectText(bucketName, filename) {
   console.log(`Scanning for text in image ${filename}`);
-  let text;
+  const [detections] = await vision.textDetection(`gs://${bucketName}/${filename}`);
+  const [annotation] = detections.textAnnotations;
+
+  const text = annotation ? annotation.description : '';
+  console.log(`Extracted text from image (${text.length} chars)`);
+
+  const [d] = await translate.detect(text);
+  const detection = Array.isArray(d) ? d[0] : d;
+  console.log(`Detected language "${detection.language}" for ${filename}`);
+
+  const tasks = config.TO_LANG.map(lang => {
+    const topicName = config[detection.language === lang ? 'RESULT_TOPIC' : 'TRANSLATE_TOPIC'];
+    const messageData = {
+      text,
+      filename,
+      lang,
+    };
   
-  return vision
-    .textDetection(`gs://${bucketName}/${filename}`)
-    .then(([detections]) => {
-      const annotation = detections.textAnnotations[0];
-      text = annotation ? annotation.description : '';
-      console.log(`Extracted text from image (${text.length} chars)`);
-      return translate.detect(text);
-    })
-    .then(([d]) => {
-      const detection = Array.isArray(d) ? d[0] : d;
-      console.log(`Detected language "${detection.language}" for ${filename}`);
+   return publishResult(topicName, messageData);
+  });
 
-      // Submit a message to the bus for each language we're going to translate to
-      const tasks = config.TO_LANG.map(lang => {
-        const topicName = config[detection.language === lang ? 'RESULT_TOPIC' : 'TRANSLATE_TOPIC'];
-        const messageData = {
-          text: text,
-          filename: filename,
-          lang: lang,
-        };
-
-        return publishResult(topicName, messageData);
-      });
-
-      return Promise.all(tasks);
-    });
+  return Promise.all(tasks);
 }
 
 /**
